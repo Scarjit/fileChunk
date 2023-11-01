@@ -1,0 +1,30 @@
+files:
+  ./tests/data/A.txt:
+    '969530299330':
+      start: 0
+      end: 10
+    '465694375410':
+      start: 0
+      end: 7
+    '498759460670':
+      start: 0
+      end: 5
+  ./tests/data/CSmall.txt:
+    '7605514':
+      start: 0
+      end: 3
+    '698651213840':
+      start: 3
+      end: 9
+    '435745550880':
+      start: 0
+      end: 4
+    '749593507280':
+      start: 0
+      end: 10
+    '1701603700':
+      start: 0
+      end: 3
+    '7474442':
+      start: 0
+      end: 3
