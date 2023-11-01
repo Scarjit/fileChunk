@@ -2,29 +2,26 @@ files:
   ./tests/data/A.txt:
     '969530299330':
       start: 0
-      end: 10
+      end: 11
     '465694375410':
       start: 0
-      end: 7
+      end: 8
     '498759460670':
       start: 0
-      end: 5
-  ./tests/data/CSmall.txt:
-    '7605514':
+      end: 6
+    '1947011700':
       start: 0
-      end: 3
-    '698651213840':
-      start: 3
-      end: 9
-    '435745550880':
+      end: 1
+    '225120121930':
+      start: 0
+      end: 2
+  ./tests/data/CSmall.txt:
+    '476565683060':
+      start: 0
+      end: 24
+    '756964312600':
       start: 0
       end: 4
-    '749593507280':
+    '225120121930':
       start: 0
-      end: 10
-    '1701603700':
-      start: 0
-      end: 3
-    '7474442':
-      start: 0
-      end: 3
+      end: 2

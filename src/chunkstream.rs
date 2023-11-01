@@ -38,6 +38,7 @@ pub(crate) struct ChunkFile{
     name: String,
     start: u64,
     end: u64,
+    filename: String,
 }
 
 impl Chunk{
@@ -52,31 +53,33 @@ impl Chunk{
         }
     }
 
-    pub(crate) fn add_file(&mut self, bytes: &[u8]) -> Vec<u8>{
+    pub(crate) fn add_file(&mut self, file : &str, bytes: &Vec<u8>) -> Vec<u8>{
         let mut vec_dq_bytes = VecDeque::from(bytes.to_vec());
         let mut written = 0;
         for _ in 0..bytes.len(){
             let byte = vec_dq_bytes.pop_front().unwrap();
             self.buffer.push(byte);
             self.base.fingerprint.push_byte(byte);
-            if self.base.fingerprint.value() % CHUNK_MODULUS == 0{
-                break;
-            }
             written += 1;
+            if self.base.fingerprint.value() % CHUNK_MODULUS == 0{
+                self.current_offset += written as u64;
+                self.base.files.push(ChunkFile {
+                    filename: file.to_string(),
+                    name: self.base.fingerprint.value().to_string(),
+                    start: self.current_offset - written as u64,
+                    end: self.current_offset ,
+                });
+                return vec_dq_bytes.make_contiguous().to_vec();
+            }
         }
+        println!("File: {}, written: {}, remaining: {}, fingerprint: {}", file, written, vec_dq_bytes.len(), self.base.fingerprint.value());
 
-        self.base.files.push(ChunkFile{
-            name: self.base.fingerprint.value().to_string(),
-            start: self.current_offset,
-            end: self.current_offset + written as u64,
-        });
-        self.current_offset += written as u64;
-
-        return vec_dq_bytes.make_contiguous().to_vec();
+        bytes.clone()
     }
 
     fn save(&self, output_path: &str) {
         let path = format!("{}/{}.chunk", output_path,self.base.fingerprint.value());
+        println!("Saving chunk: {}", path);
         // Check if file exists
         if std::path::Path::new(&path).exists() {
             return;
@@ -103,29 +106,52 @@ impl Chunker{
         for path in paths.iter(){
             let path = path.replace("\\", "/");
             // Try read file
-            let mut bytes = fs::read(&path).expect("Unable to read file");
-
-            remaining_bytes.append(&mut bytes);
+            remaining_bytes = fs::read(&path).expect("Unable to read file");
             while !remaining_bytes.is_empty() {
-                remaining_bytes = chunk.add_file(&remaining_bytes);
+                remaining_bytes = chunk.add_file(&path,&remaining_bytes);
                 if chunk.base.fingerprint.value() % CHUNK_MODULUS == 0 {
+                    println!("Chunk: {}", chunk.base.fingerprint.value());
                     // save old chunk
+                    self.update_restore_info(&chunk);
                     chunk.save(output_path);
-                    self.update_restore_info(&path, &chunk);
                     chunk = Chunk::new();
                 }
             }
             last_file = path.to_string();
         }
+        assert!(remaining_bytes.is_empty());
         if !chunk.buffer.is_empty() {
+            println!("Last chunk: {}", chunk.base.fingerprint.value());
             // Save last chunk
+            self.update_restore_info(&chunk);
             chunk.save(output_path);
-            self.update_restore_info(&last_file, &chunk);
         }
+
         self.dump_restore_info(output_path);
     }
 
-    fn update_restore_info(&mut self, filename: &str, chunk: &Chunk){
+    fn update_restore_info(&mut self, filename: &Chunk){
+        if filename.base.files.len() > 1{
+            // We need to rename the base.name for the all files, except the last one to the last one
+            let last_base = filename.base.files.last().unwrap();
+            let last_base_name = last_base.name.clone();
+            println!("Last base name: {}", last_base_name);
+            for base in filename.base.files.iter(){
+                let mut base_clone = base.clone();
+                base_clone.name = last_base_name.clone();
+                self.update_restore_info_for_file(&base_clone, filename);
+            }
+        }else {
+            for base in filename.base.files.iter() {
+                println!("Updating restore info for: {}: {} {}->{}", base.name, base.filename, base.start, base.end);
+                self.update_restore_info_for_file(base, filename);
+            }
+        }
+    }
+
+    fn update_restore_info_for_file(&mut self, file: &ChunkFile, chunk: &Chunk) {
+        println!("Updating restore info for: {}: {} {}->{}", file.name, file.filename, file.start, file.end);
+        let filename = &file.filename;
         match self.bases.get(filename) {
             None => {
                 self.bases.insert(filename.to_string(), vec![chunk.base.clone()]);
@@ -147,10 +173,13 @@ impl Chunker{
         };
 
         for (filename, bases) in self.bases.iter(){
+            println!("Filename: {}", filename);
+            println!("Bases: {:?}", bases);
+
             let mut file_map = IndexMap::new();
             for base in bases.iter(){
-                for chunk_file in base.files.iter(){
-                    file_map.insert(chunk_file.name.clone(), StartEndTuple{
+                for chunk_file in base.files.iter() {
+                    file_map.insert(chunk_file.name.clone(), StartEndTuple {
                         start: chunk_file.start,
                         end: chunk_file.end,
                     });
@@ -185,8 +214,10 @@ impl Chunker{
         let file_map = restore_info.files.get(&filename).unwrap();
         for (chunk_name, start_end) in file_map.iter(){
             let chunk_path = format!("{}/{}.chunk", data_path, chunk_name);
+            println!("Chunk path: {}", chunk_path);
             let chunk_bytes = fs::read(chunk_path).unwrap();
-            let chunk_bytes = chunk_bytes[start_end.start as usize..=start_end.end as usize].to_vec();
+            let chunk_bytes = chunk_bytes[start_end.start as usize..start_end.end as usize].to_vec();
+            println!("Chunk: {}", chunk_name);
             file.write_all(&chunk_bytes).unwrap();
         }
     }
