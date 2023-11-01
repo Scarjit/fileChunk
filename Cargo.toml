@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 serde_yaml = "0.9.27"
 blake3 = "1.5.0"
+snap = "1.1.0"
 
 [dependencies.indexmap]
 version = "2.1.0"

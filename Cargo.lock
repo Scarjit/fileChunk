@@ -62,6 +62,7 @@ dependencies = [
  "indexmap",
  "serde",
  "serde_yaml",
+ "snap",
 ]
 
 [[package]]
@@ -149,6 +150,12 @@ dependencies = [
  "serde",
  "unsafe-libyaml",
 ]
+
+[[package]]
+name = "snap"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5e9f0ab6ef7eb7353d9119c170a436d1bf248eea575ac42d19d12f4e34130831"
 
 [[package]]
 name = "syn"

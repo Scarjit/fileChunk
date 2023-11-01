@@ -5,7 +5,7 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use crate::rolling_hash::RabinFingerprint;
 
-const CHUNK_MODULUS:u64 = 10;
+const CHUNK_MODULUS:u64 = 1024*1024;
 
 #[derive(Debug, Clone)]
 pub(crate) struct Chunk{
@@ -72,14 +72,14 @@ impl Chunk{
                 return vec_dq_bytes.make_contiguous().to_vec();
             }
         }
-        println!("File: {}, written: {}, remaining: {}, fingerprint: {}", file, written, vec_dq_bytes.len(), self.base.fingerprint.value());
+        //println!("File: {}, written: {}, remaining: {}, fingerprint: {}", file, written, vec_dq_bytes.len(), self.base.fingerprint.value());
 
-        bytes.clone()
+        bytes.to_vec()
     }
 
     fn save(&self, output_path: &str) {
         let path = format!("{}/{}.chunk", output_path,self.base.fingerprint.value());
-        println!("Saving chunk: {}", path);
+        //println!("Saving chunk: {}", path);
         // Check if file exists
         if std::path::Path::new(&path).exists() {
             return;
@@ -99,18 +99,20 @@ impl Chunker{
             bases: HashMap::new(),
         }
     }
-    pub(crate) fn add_files(mut self, paths: Vec<String>, output_path: &str){
+    pub(crate) fn add_files(mut self, mut paths: Vec<String>, output_path: &str){
+        paths.sort_unstable();
         let mut chunk = Chunk::new();
         let mut remaining_bytes = vec![];
         let mut last_file = String::new();
         for path in paths.iter(){
+            println!("Path: {}", path);
             let path = path.replace("\\", "/");
             // Try read file
             remaining_bytes = fs::read(&path).expect("Unable to read file");
             while !remaining_bytes.is_empty() {
                 remaining_bytes = chunk.add_file(&path,&remaining_bytes);
                 if chunk.base.fingerprint.value() % CHUNK_MODULUS == 0 {
-                    println!("Chunk: {}", chunk.base.fingerprint.value());
+                    //println!("Chunk: {}", chunk.base.fingerprint.value());
                     // save old chunk
                     self.update_restore_info(&chunk);
                     chunk.save(output_path);
@@ -121,7 +123,7 @@ impl Chunker{
         }
         assert!(remaining_bytes.is_empty());
         if !chunk.buffer.is_empty() {
-            println!("Last chunk: {}", chunk.base.fingerprint.value());
+            //println!("Last chunk: {}", chunk.base.fingerprint.value());
             // Save last chunk
             self.update_restore_info(&chunk);
             chunk.save(output_path);
@@ -135,7 +137,7 @@ impl Chunker{
             // We need to rename the base.name for the all files, except the last one to the last one
             let last_base = filename.base.files.last().unwrap();
             let last_base_name = last_base.name.clone();
-            println!("Last base name: {}", last_base_name);
+            //println!("Last base name: {}", last_base_name);
             for base in filename.base.files.iter(){
                 let mut base_clone = base.clone();
                 base_clone.name = last_base_name.clone();
@@ -143,14 +145,14 @@ impl Chunker{
             }
         }else {
             for base in filename.base.files.iter() {
-                println!("Updating restore info for: {}: {} {}->{}", base.name, base.filename, base.start, base.end);
+                //println!("Updating restore info for: {}: {} {}->{}", base.name, base.filename, base.start, base.end);
                 self.update_restore_info_for_file(base, filename);
             }
         }
     }
 
     fn update_restore_info_for_file(&mut self, file: &ChunkFile, chunk: &Chunk) {
-        println!("Updating restore info for: {}: {} {}->{}", file.name, file.filename, file.start, file.end);
+        //println!("Updating restore info for: {}: {} {}->{}", file.name, file.filename, file.start, file.end);
         let filename = &file.filename;
         match self.bases.get(filename) {
             None => {
@@ -173,8 +175,8 @@ impl Chunker{
         };
 
         for (filename, bases) in self.bases.iter(){
-            println!("Filename: {}", filename);
-            println!("Bases: {:?}", bases);
+            //println!("Filename: {}", filename);
+            //println!("Bases: {:?}", bases);
 
             let mut file_map = IndexMap::new();
             for base in bases.iter(){
@@ -208,16 +210,16 @@ impl Chunker{
         let restore_info = fs::read_to_string(restore_info_path).unwrap();
         let restore_info: RestoreInformation = serde_yaml::from_str(&restore_info).unwrap();
 
-        println!("Restoring: {}", filename);
-        println!("{:?}", restore_info);
+        //println!("Restoring: {}", filename);
+        //println!("{:?}", restore_info);
 
         let file_map = restore_info.files.get(&filename).unwrap();
         for (chunk_name, start_end) in file_map.iter(){
             let chunk_path = format!("{}/{}.chunk", data_path, chunk_name);
-            println!("Chunk path: {}", chunk_path);
+            //println!("Chunk path: {}", chunk_path);
             let chunk_bytes = fs::read(chunk_path).unwrap();
             let chunk_bytes = chunk_bytes[start_end.start as usize..start_end.end as usize].to_vec();
-            println!("Chunk: {}", chunk_name);
+            //println!("Chunk: {}", chunk_name);
             file.write_all(&chunk_bytes).unwrap();
         }
     }
@@ -253,12 +255,18 @@ mod tests {
         fs::create_dir("./tests/restored").unwrap();
 
         let chunker_restore = Chunker::new();
-        chunker_restore.restore_file("./tests/data/A.txt", "./tests/chunks", "./tests/restored");
 
-        // Check if restored file is the same as original
-        let original = fs::read("./tests/data/A.txt").unwrap();
-        let restored = fs::read("./tests/restored/tests/data/A.txt").unwrap();
+        // Check if restored files is the same as original
+        for entry in fs::read_dir("./tests/data").unwrap() {
+            let path = format!("./tests/data/{}", entry.unwrap().file_name().to_str().unwrap());
+            let restored_path = format!("./tests/restored/{}",path);
 
-        assert_eq!(original, restored);
+            chunker_restore.restore_file(&path, "./tests/chunks", "./tests/restored");
+
+            let original = fs::read(&path).unwrap();
+            let restored = fs::read(&restored_path).unwrap();
+
+            assert_eq!(original, restored);
+        }
     }
 }
