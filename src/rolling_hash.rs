@@ -45,7 +45,7 @@ mod tests {
     #[test]
     fn test_rabin_fingerprinting() {
         // load ./tests/data/B100MB.bin
-        let data = std::fs::read("../tests/data/B100MB.bin").unwrap();
+        let data = std::fs::read("./tests/data/B100MB.bin").unwrap();
 
         let mut fingerprint = RabinFingerprint::new();
 
