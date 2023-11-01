@@ -1,6 +1,5 @@
-
 pub(crate) fn multiply_mod(a: u64, b: u64, modulus: u64) -> u64 {
-    (((a % modulus) as u128  * (b % modulus) as u128 ) % modulus as u128) as u64
+    (((a % modulus) as u128 * (b % modulus) as u128) % modulus as u128) as u64
 }
 
 pub(crate) fn mod_pow(mut base: u64, mut exp: u64, modulus: u64) -> u64 {

@@ -1,3 +1,3 @@
-mod rolling_hash;
 mod bigmath;
 mod chunkstream;
+mod rolling_hash;

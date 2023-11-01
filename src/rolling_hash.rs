@@ -1,12 +1,12 @@
 use serde::{Deserialize, Serialize};
 
-const PRIME: u64 = 1_099_511_627_791;  // A valid large prime
-const WINDOW_SIZE: usize = 64;  // Arbitrary window size
+const PRIME: u64 = 1_099_511_627_791; // A valid large prime
+const WINDOW_SIZE: usize = 64; // Arbitrary window size
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct RabinFingerprint {
     value: u64,
-    base: u64,  // This is used to efficiently remove the oldest byte from the fingerprint
+    base: u64, // This is used to efficiently remove the oldest byte from the fingerprint
 }
 
 impl RabinFingerprint {
@@ -38,7 +38,6 @@ impl RabinFingerprint {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -53,13 +52,13 @@ mod tests {
         for &byte in &data[0..WINDOW_SIZE.min(data.len())] {
             fingerprint.push_byte(byte);
         }
-        assert_ne!(fingerprint.value(), 0);  // Ensure the fingerprint is computed
+        assert_ne!(fingerprint.value(), 0); // Ensure the fingerprint is computed
 
         let initial_fingerprint = fingerprint.value();
 
         for i in 0..(data.len() - WINDOW_SIZE) {
             fingerprint.roll_byte(data[i], data[i + WINDOW_SIZE]);
-            assert_ne!(fingerprint.value(), initial_fingerprint);  // The rolled fingerprint should differ from the initial one
+            assert_ne!(fingerprint.value(), initial_fingerprint); // The rolled fingerprint should differ from the initial one
         }
     }
 }
