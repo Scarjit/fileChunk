@@ -1,11 +1,11 @@
 use std::collections::{HashMap, VecDeque};
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Write};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use crate::rolling_hash::RabinFingerprint;
 
-const CHUNK_MODULUS:u64 = 1024*1024;
+const CHUNK_MODULUS:u64 = 1024*1024*10;
 
 #[derive(Debug, Clone)]
 pub(crate) struct Chunk{
@@ -85,7 +85,8 @@ impl Chunk{
             return;
         }
         let mut file = fs::File::create(path).unwrap();
-        file.write_all(&self.buffer).unwrap();
+        // Snappy compress
+        snap::write::FrameEncoder::new(&mut file).write_all(&self.buffer).unwrap();
     }
 }
 
@@ -218,6 +219,9 @@ impl Chunker{
             let chunk_path = format!("{}/{}.chunk", data_path, chunk_name);
             //println!("Chunk path: {}", chunk_path);
             let chunk_bytes = fs::read(chunk_path).unwrap();
+            // Snappy decompress
+            let chunk_bytes = snap::read::FrameDecoder::new(&chunk_bytes[..]).bytes().map(|x| x.unwrap()).collect::<Vec<u8>>();
+
             let chunk_bytes = chunk_bytes[start_end.start as usize..start_end.end as usize].to_vec();
             //println!("Chunk: {}", chunk_name);
             file.write_all(&chunk_bytes).unwrap();
