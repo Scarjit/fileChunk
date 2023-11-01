@@ -51,6 +51,20 @@ impl Chunk {
         }
     }
 
+
+    pub(crate) fn repair(&mut self) {
+        if self.base.files.len() <= 1{
+            println!("No repair needed");
+            return;
+        }
+        let fingerprint = self.base.fingerprint.value();
+        for i in 0..self.base.files.len() {
+            self.base.files[0].name = fingerprint.to_string();
+        }
+        println!("Repairing chunk: {}", fingerprint);
+        println!("Files: {:#?}", self.base.files);
+    }
+
     pub(crate) fn add_file(&mut self, file: &str, bytes: &Vec<u8>) -> Vec<u8> {
         let mut vec_dq_bytes = VecDeque::from(bytes.to_vec());
         let mut written = 0;
@@ -70,23 +84,34 @@ impl Chunk {
                 return vec_dq_bytes.make_contiguous().to_vec();
             }
         }
-        //println!("File: {}, written: {}, remaining: {}, fingerprint: {}", file, written, vec_dq_bytes.len(), self.base.fingerprint.value());
+        self.current_offset += written as u64;
+        println!("File: {}, written: {}, remaining: {}, fingerprint: {}", file, written, vec_dq_bytes.len(), self.base.fingerprint.value());
+        self.base.files.push(ChunkFile {
+            filename: file.to_string(),
+            name: self.base.fingerprint.value().to_string(),
+            start: self.current_offset - written as u64,
+            end: self.current_offset,
+        });
 
-        bytes.to_vec()
+        vec_dq_bytes.make_contiguous().to_vec()
     }
 
     fn save(&self, output_path: &str) {
         let path = format!("{}/{}.chunk", output_path, self.base.fingerprint.value());
-        //println!("Saving chunk: {}", path);
+        println!("Saving chunk: {}", path);
         // Check if file exists
         if std::path::Path::new(&path).exists() {
             return;
         }
         let mut file = fs::File::create(path).unwrap();
         // Snappy compress
+        /*
         snap::write::FrameEncoder::new(&mut file)
             .write_all(&self.buffer)
             .unwrap();
+
+         */
+        file.write_all(&self.buffer).unwrap();
     }
 }
 
@@ -106,14 +131,16 @@ impl Chunker {
         let mut remaining_bytes = vec![];
         let mut last_file = String::new();
         for path in paths.iter() {
+            let now = std::time::Instant::now();
             println!("Path: {}", path);
-            let path = path.replace("\\", "/");
+            let path = path.replace('\\', "/");
             // Try read file
             remaining_bytes = fs::read(&path).expect("Unable to read file");
             while !remaining_bytes.is_empty() {
                 remaining_bytes = chunk.add_file(&path, &remaining_bytes);
                 if chunk.base.fingerprint.value() % CHUNK_MODULUS == 0 {
-                    //println!("Chunk: {}", chunk.base.fingerprint.value());
+                    println!("Chunk: {}", chunk.base.fingerprint.value());
+                    chunk.repair();
                     // save old chunk
                     self.update_restore_info(&chunk);
                     chunk.save(output_path);
@@ -121,10 +148,12 @@ impl Chunker {
                 }
             }
             last_file = path.to_string();
+            println!("Time: {:?}", now.elapsed());
         }
         assert!(remaining_bytes.is_empty());
         if !chunk.buffer.is_empty() {
-            //println!("Last chunk: {}", chunk.base.fingerprint.value());
+            println!("Last chunk: {}", chunk.base.fingerprint.value());
+            chunk.repair();
             // Save last chunk
             self.update_restore_info(&chunk);
             chunk.save(output_path);
@@ -134,11 +163,12 @@ impl Chunker {
     }
 
     fn update_restore_info(&mut self, filename: &Chunk) {
+        println!("Bases: {:#?}", filename.base);
         if filename.base.files.len() > 1 {
             // We need to rename the base.name for the all files, except the last one to the last one
             let last_base = filename.base.files.last().unwrap();
             let last_base_name = last_base.name.clone();
-            //println!("Last base name: {}", last_base_name);
+            println!("Last base name: {}", last_base_name);
             for base in filename.base.files.iter() {
                 let mut base_clone = base.clone();
                 base_clone.name = last_base_name.clone();
@@ -146,14 +176,14 @@ impl Chunker {
             }
         } else {
             for base in filename.base.files.iter() {
-                //println!("Updating restore info for: {}: {} {}->{}", base.name, base.filename, base.start, base.end);
+                println!("Updating restore info for: {}: {} {}->{}", base.name, base.filename, base.start, base.end);
                 self.update_restore_info_for_file(base, filename);
             }
         }
     }
 
     fn update_restore_info_for_file(&mut self, file: &ChunkFile, chunk: &Chunk) {
-        //println!("Updating restore info for: {}: {} {}->{}", file.name, file.filename, file.start, file.end);
+        println!("Updating restore info for: {}: {} {}->{}", file.name, file.filename, file.start, file.end);
         let filename = &file.filename;
         match self.bases.get(filename) {
             None => {
@@ -168,7 +198,7 @@ impl Chunker {
         }
     }
 
-    fn dump_restore_info(&self, output_path: &str) {
+    fn dump_restore_info(&mut self, output_path: &str) {
         let path = format!("{}/restore_info.yaml", output_path);
         let mut file = fs::File::create(path).unwrap();
 
@@ -176,13 +206,17 @@ impl Chunker {
             files: HashMap::new(),
         };
 
+
         for (filename, bases) in self.bases.iter() {
-            //println!("Filename: {}", filename);
-            //println!("Bases: {:?}", bases);
+            println!("Filename: {}", filename);
+            println!("Bases: {:?}", bases);
 
             let mut file_map = IndexMap::new();
             for base in bases.iter() {
                 for chunk_file in base.files.iter() {
+                    if &chunk_file.filename != filename{
+                        continue;
+                    }
                     file_map.insert(
                         chunk_file.name.clone(),
                         StartEndTuple {
@@ -215,23 +249,24 @@ impl Chunker {
         let restore_info = fs::read_to_string(restore_info_path).unwrap();
         let restore_info: RestoreInformation = serde_yaml::from_str(&restore_info).unwrap();
 
-        //println!("Restoring: {}", filename);
-        //println!("{:?}", restore_info);
+        println!("Restoring: {}", filename);
+        println!("{:?}", restore_info);
 
         let file_map = restore_info.files.get(&filename).unwrap();
         for (chunk_name, start_end) in file_map.iter() {
             let chunk_path = format!("{}/{}.chunk", data_path, chunk_name);
-            //println!("Chunk path: {}", chunk_path);
+            println!("Chunk path: {}", chunk_path);
             let chunk_bytes = fs::read(chunk_path).unwrap();
             // Snappy decompress
+            /*
             let chunk_bytes = snap::read::FrameDecoder::new(&chunk_bytes[..])
                 .bytes()
                 .map(|x| x.unwrap())
                 .collect::<Vec<u8>>();
-
+*/
             let chunk_bytes =
                 chunk_bytes[start_end.start as usize..start_end.end as usize].to_vec();
-            //println!("Chunk: {}", chunk_name);
+            println!("Chunk: {}", chunk_name);
             file.write_all(&chunk_bytes).unwrap();
         }
     }
